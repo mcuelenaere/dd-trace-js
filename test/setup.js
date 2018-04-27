@@ -7,6 +7,7 @@ const proxyquire = require('proxyquire')
 const nock = require('nock')
 const retry = require('retry')
 const pg = require('pg')
+const redis = require('redis')
 const platform = require('../src/platform')
 const node = require('../src/platform/node')
 
@@ -35,7 +36,8 @@ waitForServices()
 
 function waitForServices () {
   return Promise.all([
-    waitForPostgres()
+    waitForPostgres(),
+    waitForRedis()
   ])
 }
 
@@ -67,6 +69,25 @@ function waitForPostgres () {
           })
         })
       })
+    })
+  })
+}
+
+function waitForRedis () {
+  return new Promise((resolve, reject) => {
+    const client = redis.createClient({
+      retry_strategy: function (options) {
+        if (options.attempt > retryOptions.retries) {
+          return reject(options.error)
+        }
+
+        return retryOptions.maxTimeout
+      }
+    })
+
+    client.on('connect', () => {
+      client.quit()
+      resolve()
     })
   })
 }
