@@ -1,16 +1,20 @@
 'use strict'
 
+// TODO: remove sanitization when implemented by the agent
+
 const shimmer = require('shimmer')
 
 function createWrapOperation (tracer, config, operationName) {
   return function wrapOperation (operation) {
     return function operationWithTrace (ns, ops, options, callback) {
+      const resource = getResource(operationName, ns, ops)
+
       let result
 
       tracer.trace('mongodb.query', span => {
         span.addTags({
           'service.name': config.service || 'mongodb',
-          'resource.name': `${operationName} ${ns} ${JSON.stringify(ops)}`,
+          'resource.name': resource,
           'span.type': 'db',
           'db.name': ns,
           'out.host': this.s.options.host,
@@ -29,32 +33,28 @@ function createWrapOperation (tracer, config, operationName) {
   }
 }
 
-function createNextWrap (tracer, config) {
-  return function nextWrap (next) {
-    return function next_trace (cb) {
-      let result
-
-      console.log(this)
+function createWrapNext (tracer, config) {
+  return function wrapNext (next) {
+    return function nextWithTrace (cb) {
+      const resource = getResource('cursor', this.ns, this.cmd)
 
       tracer.trace('mongodb.query', span => {
         span.addTags({
-          'service.name': config.service || 'mongodb'
-          // 'resource.name': `find ${this.cmd} ${JSON.stringify(ops)}`,
-          // 'span.type': 'db',
-          // 'db.name': ns,
-          // 'out.host': this.s.options.host,
-          // 'out.port': this.s.options.port
+          'service.name': config.service || 'mongodb',
+          'resource.name': resource,
+          'span.type': 'db',
+          'db.name': this.ns,
+          'out.host': this.topology.s.options.host,
+          'out.port': this.topology.s.options.port
         })
 
-        result = next.call(this, wrapCallback(tracer, span, cb))
+        next.call(this, wrapCallback(tracer, span, cb, this))
       })
-
-      return result
     }
   }
 }
 
-function wrapCallback (tracer, span, done) {
+function wrapCallback (tracer, span, done, that) {
   return tracer.bind((err, res) => {
     if (err) {
       span.addTags({
@@ -80,6 +80,30 @@ function wrapCallback (tracer, span, done) {
 //   }
 // }
 
+function getResource (op, ns, cmd) {
+  const parts = [op, ns]
+
+  if (cmd.query) {
+    parts.push(JSON.stringify(sanitize(cmd.query)))
+  }
+
+  return parts.join(' ')
+}
+
+function sanitize (input) {
+  const output = {}
+
+  for (const key in input) {
+    if (typeof input[key] === 'object' && input[key] !== null) {
+      output[key] = sanitize(input)
+    } else {
+      output[key] = '?'
+    }
+  }
+
+  return output
+}
+
 module.exports = [
   // {
   //   file: 'lib/connection/pool.js',
@@ -99,7 +123,7 @@ module.exports = [
       shimmer.wrap(mongo.Server.prototype, 'insert', createWrapOperation(tracer, config, 'insert'))
       shimmer.wrap(mongo.Server.prototype, 'update', createWrapOperation(tracer, config, 'update'))
       shimmer.wrap(mongo.Server.prototype, 'remove', createWrapOperation(tracer, config, 'remove'))
-      shimmer.wrap(mongo.Cursor.prototype, 'next', createNextWrap(tracer, config))
+      shimmer.wrap(mongo.Cursor.prototype, 'next', createWrapNext(tracer, config))
     },
     unpatch (mongo) {
       shimmer.unwrap(mongo.Server.prototype, 'command')
