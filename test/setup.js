@@ -7,6 +7,7 @@ const proxyquire = require('proxyquire')
 const nock = require('nock')
 const retry = require('retry')
 const pg = require('pg')
+const mongo = require('mongodb-core')
 const platform = require('../src/platform')
 const node = require('../src/platform/node')
 
@@ -35,7 +36,8 @@ waitForServices()
 
 function waitForServices () {
   return Promise.all([
-    waitForPostgres()
+    waitForPostgres(),
+    waitForMongo()
   ])
 }
 
@@ -67,6 +69,33 @@ function waitForPostgres () {
           })
         })
       })
+    })
+  })
+}
+
+function waitForMongo () {
+  return new Promise((resolve, reject) => {
+    const operation = retry.operation(retryOptions)
+
+    operation.attempt(currentAttempt => {
+      const server = new mongo.Server({
+        host: 'localhost',
+        port: 27017,
+        reconnect: false
+      })
+
+      server.on('connect', server => {
+        server.destroy()
+        resolve()
+      })
+
+      server.on('error', err => {
+        if (!operation.retry(err)) {
+          reject(err)
+        }
+      })
+
+      server.connect()
     })
   })
 }
