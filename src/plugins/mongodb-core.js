@@ -17,9 +17,7 @@ function createWrapOperation (tracer, config, operationName) {
           'out.port': this.s.options.port
         })
 
-        if (!options) {
-          result = operation.call(this, ns, ops)
-        } else if (typeof options === 'function') {
+        if (typeof options === 'function') {
           result = operation.call(this, ns, ops, wrapCallback(tracer, span, options))
         } else {
           result = operation.call(this, ns, ops, options, wrapCallback(tracer, span, callback))
@@ -31,25 +29,30 @@ function createWrapOperation (tracer, config, operationName) {
   }
 }
 
-// function createNextWrap (api) {
-//   return function nextWrap (next) {
-//     return function next_trace (cb) {
-//       const span = api.createChildSpan({ name: 'mongo-cursor' })
+function createNextWrap (tracer, config) {
+  return function nextWrap (next) {
+    return function next_trace (cb) {
+      let result
 
-//       if (!api.isRealSpan(span)) {
-//         return next.apply(this, arguments)
-//       }
+      console.log(this)
 
-//       span.addLabel('db', this.ns)
+      tracer.trace('mongodb.query', span => {
+        span.addTags({
+          'service.name': config.service || 'mongodb'
+          // 'resource.name': `find ${this.cmd} ${JSON.stringify(ops)}`,
+          // 'span.type': 'db',
+          // 'db.name': ns,
+          // 'out.host': this.s.options.host,
+          // 'out.port': this.s.options.port
+        })
 
-//       if (api.enhancedDatabaseReportingEnabled()) {
-//         span.addLabel('cmd', JSON.stringify(this.cmd))
-//       }
+        result = next.call(this, wrapCallback(tracer, span, cb))
+      })
 
-//       return next.call(this, wrapCallback(api, span, cb))
-//     }
-//   }
-// }
+      return result
+    }
+  }
+}
 
 function wrapCallback (tracer, span, done) {
   return tracer.bind((err, res) => {
@@ -96,14 +99,14 @@ module.exports = [
       shimmer.wrap(mongo.Server.prototype, 'insert', createWrapOperation(tracer, config, 'insert'))
       shimmer.wrap(mongo.Server.prototype, 'update', createWrapOperation(tracer, config, 'update'))
       shimmer.wrap(mongo.Server.prototype, 'remove', createWrapOperation(tracer, config, 'remove'))
-      // shimmer.wrap(mongo.Cursor.prototype, 'next', createNextWrap(tracer))
+      shimmer.wrap(mongo.Cursor.prototype, 'next', createNextWrap(tracer, config))
     },
     unpatch (mongo) {
       shimmer.unwrap(mongo.Server.prototype, 'command')
       shimmer.unwrap(mongo.Server.prototype, 'insert')
       shimmer.unwrap(mongo.Server.prototype, 'update')
       shimmer.unwrap(mongo.Server.prototype, 'remove')
-      // shimmer.unwrap(mongo.Cursor.prototype, 'next')
+      shimmer.unwrap(mongo.Cursor.prototype, 'next')
     }
   }
 ]

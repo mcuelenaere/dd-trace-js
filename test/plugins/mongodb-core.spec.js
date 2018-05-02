@@ -111,7 +111,27 @@ describe('Plugin', () => {
       })
 
       it('should do automatic instrumentation for cursor operations', done => {
+        agent
+          .use(traces => {
+            const span = traces[0][0]
+            const sanitizedQuery = `insert test.${collection} [{"a":1}]`
 
+            expect(span).to.have.property('name', 'mongodb.query')
+            expect(span).to.have.property('service', 'mongodb')
+            expect(span).to.have.property('resource', sanitizedQuery)
+          })
+          .then(done)
+          .catch(done)
+
+        const cursor = server.cursor(`test.${collection}`, {
+          find: 'test.what',
+          query: { a: 1 }
+        })
+
+        cursor.next((err, doc) => {
+          console.log(err, doc)
+          server.destroy()
+        })
       })
     })
 
