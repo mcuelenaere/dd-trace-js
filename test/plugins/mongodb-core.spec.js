@@ -77,11 +77,11 @@ describe('Plugin', () => {
           agent
             .use(traces => {
               const span = traces[0][0]
-              const sanitizedQuery = `insert test.${collection}`
+              const resource = `insert test.${collection}`
 
               expect(span).to.have.property('name', 'mongodb.query')
               expect(span).to.have.property('service', 'mongodb')
-              expect(span).to.have.property('resource', sanitizedQuery)
+              expect(span).to.have.property('resource', resource)
               expect(span).to.have.property('type', 'db')
               expect(span.meta).to.have.property('db.name', `test.${collection}`)
               expect(span.meta).to.have.property('out.host', 'localhost')
@@ -90,7 +90,29 @@ describe('Plugin', () => {
             .then(done)
             .catch(done)
 
-          server.insert(`test.${collection}`, [{ a: 1 }], () => {})
+          server.insert(`test.${collection}`, [{ a: 1 }], {}, () => {})
+        })
+
+        it('should sanitize the query as the resource', done => {
+          agent
+            .use(traces => {
+              const span = traces[0][0]
+              const resource = `command test.${collection} {"foo":"?","bar":{"baz":"?"}}`
+
+              expect(span).to.have.property('resource', resource)
+            })
+            .then(done)
+            .catch(done)
+
+          server.command(`test.${collection}`, {
+            find: `test.${collection}`,
+            query: {
+              foo: 1,
+              bar: {
+                baz: [1, 2, 3]
+              }
+            }
+          }, () => {})
         })
 
         it('should handle errors', done => {
@@ -117,11 +139,9 @@ describe('Plugin', () => {
           agent
             .use(traces => {
               const span = traces[0][0]
-              const sanitizedQuery = `cursor test.${collection} {"a":"?"}`
 
               expect(span).to.have.property('name', 'mongodb.query')
               expect(span).to.have.property('service', 'mongodb')
-              expect(span).to.have.property('resource', sanitizedQuery)
               expect(span).to.have.property('type', 'db')
               expect(span.meta).to.have.property('db.name', `test.${collection}`)
               expect(span.meta).to.have.property('out.host', 'localhost')
@@ -138,26 +158,25 @@ describe('Plugin', () => {
           cursor.next()
         })
 
-        it('should sanitize', done => {
+        it('should sanitize the query as the resource', done => {
           agent
             .use(traces => {
               const span = traces[0][0]
-              const sanitizedQuery = `cursor test.${collection} {"a":"?"}`
+              const resource = `cursor test.${collection} {"foo":"?","bar":{"baz":"?"}}`
 
-              expect(span).to.have.property('name', 'mongodb.query')
-              expect(span).to.have.property('service', 'mongodb')
-              expect(span).to.have.property('resource', sanitizedQuery)
-              expect(span).to.have.property('type', 'db')
-              expect(span.meta).to.have.property('db.name', `test.${collection}`)
-              expect(span.meta).to.have.property('out.host', 'localhost')
-              expect(span.meta).to.have.property('out.port', '27017')
+              expect(span).to.have.property('resource', resource)
             })
             .then(done)
             .catch(done)
 
           const cursor = server.cursor(`test.${collection}`, {
             find: `test.${collection}`,
-            query: { a: 1 }
+            query: {
+              foo: 1,
+              bar: {
+                baz: [1, 2, 3]
+              }
+            }
           })
 
           cursor.next()

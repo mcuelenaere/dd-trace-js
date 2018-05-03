@@ -94,14 +94,18 @@ function sanitize (input) {
   const output = {}
 
   for (const key in input) {
-    if (typeof input[key] === 'object' && input[key] !== null) {
-      output[key] = sanitize(input)
+    if (isObject(input[key])) {
+      output[key] = sanitize(input[key])
     } else {
       output[key] = '?'
     }
   }
 
   return output
+}
+
+function isObject (val) {
+  return typeof val === 'object' && val !== null && !(val instanceof Array)
 }
 
 module.exports = [
