@@ -7,6 +7,7 @@ describe('Plugin', () => {
   let mongo
   let server
   let platform
+  let context
   let collection
 
   function setupMongo () {
@@ -43,6 +44,7 @@ describe('Plugin', () => {
       mongo = require('mongodb-core')
       plugin = require('../../src/plugins/mongodb-core')
       platform = require('../../src/platform')
+      context = platform.context({ experimental: { asyncHooks: false } })
 
       collection = platform.id().toString()
 
@@ -115,6 +117,18 @@ describe('Plugin', () => {
           }, () => {})
         })
 
+        it('should propagate context', done => {
+          context.run(() => {
+            context.set('foo', 'bar')
+            server.insert(`test.${collection}`, [{ a: 1 }], {}, callback)
+          })
+
+          function callback () {
+            expect(context.get('foo')).to.equal('bar')
+            done()
+          }
+        })
+
         it('should handle errors', done => {
           let error
 
@@ -180,6 +194,45 @@ describe('Plugin', () => {
           })
 
           cursor.next()
+        })
+
+        it('should propagate context', done => {
+          const cursor = server.cursor(`test.${collection}`, {
+            find: `test.${collection}`,
+            query: { a: 1 }
+          })
+
+          context.run(() => {
+            context.set('foo', 'bar')
+            cursor.next(callback)
+          })
+
+          function callback () {
+            expect(context.get('foo')).to.equal('bar')
+            done()
+          }
+        })
+
+        it('should handle errors', done => {
+          let error
+
+          agent
+            .use(traces => {
+              expect(traces[0][0].meta).to.have.property('error.type', error.name)
+              expect(traces[0][0].meta).to.have.property('error.msg', error.message)
+              expect(traces[0][0].meta).to.have.property('error.stack', error.stack)
+            })
+            .then(done)
+            .catch(done)
+
+          const cursor = server.cursor(`test.${collection}`, {
+            find: `test.${collection}`,
+            query: 'invalid'
+          })
+
+          cursor.next(err => {
+            error = err
+          })
         })
       })
     })
