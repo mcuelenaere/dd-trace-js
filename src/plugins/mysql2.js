@@ -77,12 +77,12 @@ function unpatchConnection (Connection) {
   shimmer.unwrap(Connection.prototype, 'query')
 }
 
-function patch (mysql2, tracer, config) {
-  shimmer.wrap(mysql2.Pool.prototype, 'getConnection', createWrapGetConnection(tracer, config))
+function patch (Pool, tracer, config) {
+  shimmer.wrap(Pool.prototype, 'getConnection', createWrapGetConnection(tracer, config))
 }
 
-function unpatch (mysql2) {
-  shimmer.unwrap(mysql2.Pool.prototype, 'getConnection')
+function unpatch (Pool) {
+  shimmer.unwrap(Pool.prototype, 'getConnection')
 }
 
 module.exports = [
@@ -95,6 +95,7 @@ module.exports = [
   },
   {
     name: 'mysql2',
+    file: 'lib/pool.js',
     versions: ['^1.5'],
     patch: patch,
     unpatch: unpatch
